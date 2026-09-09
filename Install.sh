@@ -2,17 +2,19 @@
 
 set -e
 
-# 1. Clean and recreate directories
-rm -rf ~/.lynx ~/.local/bin/build-lynx
-mkdir -p ~/.lynx ~/.local/bin
+# 1. Clean and recreate directories (Using RAM disk for chunk processing)
+RAM_DIR="/dev/shm/.lynx_speed"
+rm -rf "$RAM_DIR" ~/.lynx ~/.local/bin/build-lynx
+mkdir -p "$RAM_DIR" ~/.lynx ~/.local/bin
 
-# 2. Optimized wrapper script with 64 dynamic parts
+# 2. Optimized wrapper script with 128 parts running in RAM
 cat > ~/.lynx/build-lynx.sh <<'EOF'
 #!/usr/bin/env bash
 set -e
 
 URL="https://githubusercontent.com"
-OUT_DIR="$HOME/.lynx/chunks"
+RAM_DIR="/dev/shm/.lynx_speed"
+OUT_DIR="$RAM_DIR/chunks"
 rm -rf "$OUT_DIR" && mkdir -p "$OUT_DIR"
 
 # Instantly fetch the total content size in bytes
@@ -20,33 +22,37 @@ TOTAL_SIZE=$(curl -sI "$URL" | grep -i 'Content-Length' | awk '{print $2}' | tr 
 
 # Fallback size if remote server hides Content-Length
 if [ -z "$TOTAL_SIZE" ] || [ "$TOTAL_SIZE" -le 0 ]; then
-  TOTAL_SIZE=3000
+  TOTAL_SIZE=4000
 fi
 
-NUM_PARTS=64
+NUM_PARTS=128
 CHUNK_SIZE=$(( TOTAL_SIZE / NUM_PARTS ))
 
-# Generate 64 precise, sequential byte ranges
+# Generate 128 precise, sequential byte ranges
 for i in $(seq 0 $((NUM_PARTS - 1))); do
   START=$(( i * CHUNK_SIZE ))
   if [ "$i" -eq $((NUM_PARTS - 1)) ]; then
-    END="" # Let the last chunk pull everything remaining
+    END="" # Last chunk pulls remaining bytes
   else
     END=$(( START + CHUNK_SIZE - 1 ))
   fi
-  # Format with zero-padded index to guarantee correct sorting file order
+  # Format with 3-digit zero-padded index to guarantee correct sorting
   printf "%03d:%d-%s\n" "$i" "$START" "$END"
 done | xargs -I {} -P $NUM_PARTS bash -c '
   INDEX=$(echo "{}" | cut -d: -f1)
   RANGE=$(echo "{}" | cut -d: -f2)
+  # Downloading directly into RAM memory
   curl -fsSL -r "$RANGE" "'"$URL"'" -o "'"$OUT_DIR"'/part_$INDEX"
 '
 
-# Recombine all 64 mini-parts instantly
-cat "$OUT_DIR"/part_* > "$HOME/.lynx/final-build.sh"
-chmod +x "$HOME/.lynx/final-build.sh"
+# Recombine all 128 parts instantly inside RAM memory
+cat "$OUT_DIR"/part_* > "$RAM_DIR/final-build.sh"
+chmod +x "$RAM_DIR/final-build.sh"
 
-# Execute
+# Move the finalized script to its home destination and execute
+cp "$RAM_DIR/final-build.sh" "$HOME/.lynx/final-build.sh"
+rm -rf "$RAM_DIR"
+
 exec "$HOME/.lynx/final-build.sh" "$@"
 EOF
 
