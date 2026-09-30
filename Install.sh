@@ -2,57 +2,43 @@
 
 set -e
 
-RAM_DIR="/dev/shm/.lynx_max"
-rm -rf "$RAM_DIR" ~/.lynx ~/.local/bin/build-lynx
-mkdir -p "$RAM_DIR" ~/.lynx ~/.local/bin
+BASE_URL="https://raw.githubusercontent.com/67clicker67/build-lynx/main"
+INSTALL_DIR="$HOME/.lynx"
+SCRIPT_PATH="$INSTALL_DIR/build-lynx.sh"
+BIN_DIR="$HOME/.local/bin"
 
-cat > ~/.lynx/build-lynx.sh <<'EOF'
+mkdir -p "$INSTALL_DIR"
+mkdir -p "$BIN_DIR"
+
+curl -fsSL "$BASE_URL/build-lynx.sh" -o "$SCRIPT_PATH"
+
+chmod +x "$SCRIPT_PATH"
+
+cat > "$BIN_DIR/build-lynx" <<EOF
 #!/usr/bin/env bash
-set -e
-
-URL="https://githubusercontent.com"
-RAM_DIR="/dev/shm/.lynx_max"
-OUT_DIR="$RAM_DIR/chunks"
-rm -rf "$OUT_DIR" && mkdir -p "$OUT_DIR"
-
-TOTAL_SIZE=$(curl -sI -o /dev/null -w "%{size_download}" "$URL" || echo "4096")
-[ -z "$TOTAL_SIZE" ] || [ "$TOTAL_SIZE" -le 0 ] && TOTAL_SIZE=4096
-
-NUM_PARTS=256
-CHUNK_SIZE=$(( TOTAL_SIZE / NUM_PARTS ))
-
-seq 0 $((NUM_PARTS - 1)) | xargs -I {} -P $NUM_PARTS bash -c '
-  i={}
-  START=$(( i * '"$CHUNK_SIZE"' ))
-  if [ "$i" -eq '$((NUM_PARTS - 1))' ]; then
-    END=""
-  else
-    END=$(( START + '"$CHUNK_SIZE"' - 1 ))
-  fi
-
-  curl -s -fsSL -r "$START-$END" --tcp-nodelay --connect-timeout 2 "'"$URL"'" -o "'"$OUT_DIR"'/p_$(printf "%03d" $i)"
-'
-
-# 3. Blazing fast compilation inside RAM
-cat "$OUT_DIR"/p_* > "$RAM_DIR/final-build.sh"
-chmod +x "$RAM_DIR/final-build.sh"
-
-cp "$RAM_DIR/final-build.sh" "$HOME/.lynx/final-build.sh"
-rm -rf "$RAM_DIR"
-
-exec "$HOME/.lynx/final-build.sh" "$@"
+exec "$SCRIPT_PATH" "\$@"
 EOF
 
-chmod +x ~/.lynx/build-lynx.sh
+chmod +x "$BIN_DIR/build-lynx"
 
-cat > ~/.local/bin/build-lynx <<'EOF'
-#!/usr/bin/env bash
-exec "$HOME/.lynx/build-lynx.sh" "$@"
-EOF
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    SHELL_NAME="$(basename "$SHELL")"
 
-chmod +x ~/.local/bin/build-lynx
-export PATH="$HOME/.local/bin:$PATH"
+    case "$SHELL_NAME" in
+        bash)
+            PROFILE="$HOME/.bashrc"
+            ;;
+        zsh)
+            PROFILE="$HOME/.zshrc"
+            ;;
+        *)
+            PROFILE="$HOME/.profile"
+            ;;
+    esac
 
-echo "Installed."
-echo "Running..."
-build-lynx
+    if ! grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$PROFILE" 2>/dev/null; then
+        printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >> "$PROFILE"
+    fi
+
+    export PATH="$BIN_DIR:$PATH"
+fi
