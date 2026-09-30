@@ -15,15 +15,12 @@ RAM_DIR="/dev/shm/.lynx_max"
 OUT_DIR="$RAM_DIR/chunks"
 rm -rf "$OUT_DIR" && mkdir -p "$OUT_DIR"
 
-# 1. Instant HEAD request optimizing connection reuse and bypassing DNS lookup overhead
 TOTAL_SIZE=$(curl -sI -o /dev/null -w "%{size_download}" "$URL" || echo "4096")
 [ -z "$TOTAL_SIZE" ] || [ "$TOTAL_SIZE" -le 0 ] && TOTAL_SIZE=4096
 
 NUM_PARTS=256
 CHUNK_SIZE=$(( TOTAL_SIZE / NUM_PARTS ))
 
-# 2. Optimized generation utilizing seq to pipeline directly to xargs
-# Bypasses slow shell loops completely
 seq 0 $((NUM_PARTS - 1)) | xargs -I {} -P $NUM_PARTS bash -c '
   i={}
   START=$(( i * '"$CHUNK_SIZE"' ))
@@ -32,11 +29,7 @@ seq 0 $((NUM_PARTS - 1)) | xargs -I {} -P $NUM_PARTS bash -c '
   else
     END=$(( START + '"$CHUNK_SIZE"' - 1 ))
   fi
-  
-  # Highly optimized curl flags for maximum throughput:
-  # --tcp-nodelay: Disables Nagles algorithm for instant packet firing
-  # --connect-timeout 2: Fails fast if a thread stalls
-  # -s: Silent mode reduces stdout processing overhead
+
   curl -s -fsSL -r "$START-$END" --tcp-nodelay --connect-timeout 2 "'"$URL"'" -o "'"$OUT_DIR"'/p_$(printf "%03d" $i)"
 '
 
