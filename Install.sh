@@ -2,7 +2,7 @@
 
 set -e
 
-BASE_URL="https://raw.githubusercontent.com/Pax0102/build-lynx/main"
+BASE_URL="https://raw.githubusercontent.com/67clicker67/build-lynx/main"
 INSTALL_DIR="$HOME/.lynx"
 SCRIPT_PATH="$INSTALL_DIR/build-lynx.sh"
 BIN_DIR="$HOME/.local/bin"
